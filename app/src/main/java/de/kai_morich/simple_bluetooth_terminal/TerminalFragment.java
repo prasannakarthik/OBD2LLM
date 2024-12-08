@@ -17,6 +17,7 @@ import android.text.Spannable;
 import android.text.SpannableStringBuilder;
 import android.text.method.ScrollingMovementMethod;
 import android.text.style.ForegroundColorSpan;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuInflater;
@@ -32,6 +33,8 @@ import androidx.fragment.app.Fragment;
 
 import java.util.ArrayDeque;
 import java.util.Arrays;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class TerminalFragment extends Fragment implements ServiceConnection, SerialListener {
 
@@ -40,7 +43,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
     private String deviceAddress;
     private SerialService service;
 
-    private TextView receiveText;
+    public  TextView receiveText;
     private TextView sendText;
     private TextUtil.HexWatcher hexWatcher;
 
@@ -143,7 +146,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         return view;
     }
 
-    @Override
+   @Override
     public void onCreateOptionsMenu(@NonNull Menu menu, MenuInflater inflater) {
         inflater.inflate(R.menu.menu_terminal, menu);
     }
@@ -218,7 +221,103 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         service.disconnect();
     }
 
+    private String decodeOBD2Prompt = "You are an OBD-II code translator. Your sole task is to interpret user queries about vehicle diagnostics and return the corresponding OBD-II hexadecimal request code. " +
+            "Your response must be strictly limited to the two-byte hexadecimal code without any explanation or additional text. Use the following mappings as your reference:\n" +
+            "Monitor Status: 0101\n" +
+            "DTC Causing Freeze Frame: 0102\n" +
+            "Fuel System Status: 0103\n" +
+            "Engine Load: 0104\n" +
+            "Coolant Temperature: 0105\n" +
+            "Short Term Fuel Trim—Bank 1: 0106\n" +
+            "Long Term Fuel Trim—Bank 1: 0107\n" +
+            "Short Term Fuel Trim—Bank 2: 0108\n" +
+            "Long Term Fuel Trim—Bank 2: 0109\n" +
+            "Fuel Pressure: 010A\n" +
+            "Intake Manifold Pressure: 010B\n" +
+            "Engine RPM: 010c\n" +
+            "Vehicle Speed: 010D\n" +
+            "Timing Advance: 010E\n" +
+            "Intake Air Temperature: 010F\n" +
+            "Mass Air Flow Rate: 0110\n" +
+            "Throttle Position: 0111\n" +
+            "Commanded Secondary Air Status: 0112\n" +
+            "Oxygen Sensors Present: 0113\n" +
+            "Oxygen Sensor 1: 0114\n" +
+            "Oxygen Sensor 2: 0115\n" +
+            "Run Time Since Engine Start: 011F";
+
+    private String decodeOBD2ResponsePrompt =
+            "You are a highly skilled automotive diagnostic assistant. Your task is to interpret and decode OBD-II (On-Board Diagnostics) responses sent from an ELM327" +
+            "adapter. The responses are raw hexadecimal data and correspond to specific diagnostic commands. "
+            + "Instructions: Decode the hexadecimal response based on the OBD-II PID (Parameter Identifier) sent. "
+            + "    Provide a clear explanation of the decoded data. "
+            + "    Use standard OBD-II decoding rules to calculate the result, e.g., converting speed, RPM, or sensor values into human-readable formats. "
+            + "    If the response is invalid or malformed, explain why and suggest potential issues. "
+            + " Example Input and Output: "
+            + "Input: "
+            + " Command: 010D "
+            + "Response: 41 0D 32 "
+            + "Output: "
+            + "     Decoded Command: Vehicle Speed Sensor (PID 0x0D). "
+            + "    Decoded Value: The speed is 50 km/h. "
+            + "        Explanation: The hexadecimal value 32 is 50 in decimal. According to OBD-II, PID 0x0D reports speed in km/h. "
+            + " New Input for Decoding: "
+            + " Command: 010D "
+            + "Response: 141 0D 00 "
+            + "Your Turn: "
+            + "Decode the response. Provide the decoded value, explanation, and any additional insights. ";
+
+
+    private void generateResponseAsync(String prompt, Callback callback) {
+        ExecutorService executorService = Executors.newSingleThreadExecutor();
+        InferenceModel inferenceModel = InferenceModel.Companion.getInstance(getActivity());
+        executorService.submit(() -> {
+            try {
+                // Perform the async inference
+                inferenceModel.generateResponseAsync(prompt, new InferenceModel.InferenceCallback() {
+                    @Override
+                    public void onPartialResult(String partialResult, boolean isDone) {
+                        Log.d("LLMINFERENCE", "Partial Result: " + partialResult);
+                        if (callback != null) {
+                            callback.onResponse(partialResult);
+                        }
+                    }
+                    @Override
+                    public void onFinalResult(String finalResult) {
+                        Log.d("LLMINFERENCE", "Final Result: " + finalResult);
+                        if (callback != null) {
+                            callback.onResponse(finalResult); // Call onResponse when final result is available
+                        }
+                    }
+                });
+            } catch (Exception e) {
+                Log.e("LLMINFERENCE", "Error during inference: ", e);
+            }
+        });
+    }
+
+    private String OBD2inference(String prompt) {
+        String updatedPrompt = prompt;
+        try {
+            InferenceModel inferenceModel = InferenceModel.Companion.getInstance(getActivity());
+            updatedPrompt = inferenceModel.generateResponse(prompt);  // Get the generated response.
+            Log.d("LLMInference", "Generated response: " + updatedPrompt);
+        } catch (IllegalArgumentException e) {
+        } catch (Exception e) {
+            Log.e("LLMInference", "Unexpected error occurred: " + e.getMessage(), e);
+        }
+        return updatedPrompt;
+    }
+
+    //        str = OBD2inference(decodeOBD2Prompt + str);
     private void send(String str) {
+       str = OBD2inference(decodeOBD2Prompt + str);
+        if (str != null && str.length() > 0) {
+            str = str.substring(0, 4); // Take the first character
+        }
+
+        Log.d("llminference", "str is" + str);
+
         if(connected != Connected.True) {
             Toast.makeText(getActivity(), "not connected", Toast.LENGTH_SHORT).show();
             return;
@@ -271,6 +370,10 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
             }
         }
         receiveText.append(spn);
+        Log.d("LLMInferece", "spn is " + spn);
+        String str = "";
+        str = OBD2inference(decodeOBD2ResponsePrompt + spn);
+        Log.d("LLMInferece", "str is" + str);
     }
 
     private void status(String str) {
@@ -328,5 +431,14 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         status("connection lost: " + e.getMessage());
         disconnect();
     }
-
+    public void updateReceiveText(String text) {
+        if (receiveText != null) {
+            receiveText.append(text + "\n");
+        } else {
+            Log.e("TerminalFragment", "receiveText is null!");
+        }
+    }
+    public interface Callback {
+           void onResponse(String response);
+    }
 }

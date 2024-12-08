@@ -1,16 +1,29 @@
-[![Codacy Badge](https://api.codacy.com/project/badge/Grade/a3d8a40d7133497caa11051eaac6f1a2)](https://www.codacy.com/manual/kai-morich/SimpleBluetoothTerminal?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=kai-morich/SimpleBluetoothTerminal&amp;utm_campaign=Badge_Grade)
+OBD2 LLM interface to ELM327.
 
-# SimpleBluetoothTerminal
 
-This Android app provides a line-oriented terminal / console for classic Bluetooth (2.x) devices implementing the Bluetooth Serial Port Profile (SPP)
 
-For an overview on Android Bluetooth communication see 
-[Android Bluetooth Overview](https://developer.android.com/guide/topics/connectivity/bluetooth).
+Requirements:
+=============
 
-This App implements RFCOMM connection to the well-known SPP UUID 00001101-0000-1000-8000-00805F9B34FB
+Requires gemma2B model to be pushed to /data/local/tmp/model.bin
 
-## Motivation
+How to use?
+==========
+Install the app and use natural language to talk to OBD2 port. Below are some example prompts
 
-I got various requests asking for help with Android development or source code for my 
-[Serial Bluetooth Terminal](https://play.google.com/store/apps/details?id=de.kai_morich.serial_bluetooth_terminal) app.
-Here you find a simplified version of my app.
+
+"what's my car RPM?"
+
+"what's my car speed?"
+
+"What's my coolant temperature?"
+
+Responses will be in natural language.
+
+
+TODO
+====
+1. Update OBD2 decode and response decode prompts for better accuracy
+2. Performance improvements to use Native acceleration
+3. Performance tests on other models
+ 
