@@ -1,4 +1,4 @@
-package de.kai_morich.simple_bluetooth_terminal;
+package com.odb2llm.app;
 import android.os.Bundle;
 import android.util.Log;
 import android.widget.TextView;

@@ -4,11 +4,11 @@ apply plugin: 'org.jetbrains.kotlin.android'
 android {
     compileSdk 35
     defaultConfig {
-        targetSdk 34
+        targetSdk 35
         minSdk 24
         vectorDrawables.useSupportLibrary true
 
-        applicationId "de.kai_morich.simple_bluetooth_terminal"
+        applicationId "com.odb2llm.app"
         versionCode 1
         versionName "1.0"
     }
@@ -22,10 +22,15 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
-    namespace 'de.kai_morich.simple_bluetooth_terminal'
+    namespace 'com.odb2llm.app'
     kotlinOptions {
         jvmTarget = '1.8'
     }
+    buildFeatures {
+            buildConfig = true
+    }
+
+
 }
 
 dependencies {

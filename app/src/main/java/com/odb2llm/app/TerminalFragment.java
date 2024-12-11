@@ -1,4 +1,4 @@
-package de.kai_morich.simple_bluetooth_terminal;
+package com.odb2llm.app;
 
 import android.Manifest;
 import android.app.Activity;
@@ -9,6 +9,7 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
+import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
@@ -29,6 +30,7 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.core.app.ActivityCompat;
 import androidx.fragment.app.Fragment;
 
 import java.util.ArrayDeque;
@@ -207,7 +209,8 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         try {
             BluetoothAdapter bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
             BluetoothDevice device = bluetoothAdapter.getRemoteDevice(deviceAddress);
-            status("connecting...");
+
+            status("Connecting to OBD2 Module " + deviceAddress);
             connected = Connected.Pending;
             SerialSocket socket = new SerialSocket(getActivity().getApplicationContext(), device);
             service.connect(socket);
@@ -265,10 +268,10 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
             + " Command: 010D "
             + "Response: 141 0D 00 "
             + "Your Turn: "
-            + "Decode the response. Provide the decoded value, explanation, and any additional insights. ";
+            + "Decode the response. Provide the decoded value, explanation, and any additional insights in 3 lines crisply";
 
 
-    private void generateResponseAsync(String prompt, Callback callback) {
+    private void generateResponseAsync(String prompt) {
         ExecutorService executorService = Executors.newSingleThreadExecutor();
         InferenceModel inferenceModel = InferenceModel.Companion.getInstance(getActivity());
         executorService.submit(() -> {
@@ -278,16 +281,12 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
                     @Override
                     public void onPartialResult(String partialResult, boolean isDone) {
                         Log.d("LLMINFERENCE", "Partial Result: " + partialResult);
-                        if (callback != null) {
-                            callback.onResponse(partialResult);
-                        }
+                        receiveText.append(partialResult);
                     }
                     @Override
                     public void onFinalResult(String finalResult) {
                         Log.d("LLMINFERENCE", "Final Result: " + finalResult);
-                        if (callback != null) {
-                            callback.onResponse(finalResult); // Call onResponse when final result is available
-                        }
+                        receiveText.append(finalResult);
                     }
                 });
             } catch (Exception e) {
@@ -311,7 +310,8 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
 
     //        str = OBD2inference(decodeOBD2Prompt + str);
     private void send(String str) {
-       str = OBD2inference(decodeOBD2Prompt + str);
+        receiveText.append(str);
+        str = OBD2inference(decodeOBD2Prompt + str);
         if (str != null && str.length() > 0) {
             str = str.substring(0, 4); // Take the first character
         }
@@ -337,7 +337,6 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
             }
             SpannableStringBuilder spn = new SpannableStringBuilder(msg + '\n');
             spn.setSpan(new ForegroundColorSpan(getResources().getColor(R.color.colorSendText)), 0, spn.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-            receiveText.append(spn);
             service.write(data);
         } catch (Exception e) {
             onSerialIoError(e);
@@ -369,11 +368,11 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
                 spn.append(TextUtil.toCaretString(msg, newline.length() != 0));
             }
         }
-        receiveText.append(spn);
-        Log.d("LLMInferece", "spn is " + spn);
+        Log.d("ODB2llm", "msg from OBD2" + spn);
         String str = "";
-        str = OBD2inference(decodeOBD2ResponsePrompt + spn);
-        Log.d("LLMInferece", "str is" + str);
+        //str = OBD2inference(decodeOBD2ResponsePrompt + spn);
+        generateResponseAsync(String.valueOf(spn));
+        receiveText.append(str);
     }
 
     private void status(String str) {

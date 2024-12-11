@@ -1,4 +1,4 @@
-package de.kai_morich.simple_bluetooth_terminal;
+package com.odb2llm.app;
 
 import android.content.Context
 import com.google.mediapipe.tasks.genai.llminference.LlmInference
@@ -9,9 +9,6 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
-import java.io.FileInputStream
-import java.io.IOException
-import java.nio.charset.Charset
 
 class InferenceModel private constructor(context: Context) {
     private var llmInference: LlmInference
@@ -40,7 +37,6 @@ class InferenceModel private constructor(context: Context) {
 
         llmInference = LlmInference.createFromOptions(context, options)
     }
-
 
     fun generateResponseAsync(prompt: String, callback: InferenceCallback) {
         // Add the gemma prompt prefix to trigger the response.
