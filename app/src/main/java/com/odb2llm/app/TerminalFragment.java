@@ -9,7 +9,7 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
-import android.content.pm.PackageManager;
+
 import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
@@ -30,13 +30,19 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.core.app.ActivityCompat;
+import androidx.lifecycle.ViewModelProvider;
 import androidx.fragment.app.Fragment;
 
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HexFormat;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
+
+import ai.wordbox.dogsembeddings.TextEmbeddingsViewModel;
 
 public class TerminalFragment extends Fragment implements ServiceConnection, SerialListener {
 
@@ -54,6 +60,8 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
     private boolean hexEnabled = false;
     private boolean pendingNewline = false;
     private String newline = TextUtil.newline_crlf;
+
+    private TextEmbeddingsViewModel textEmbeddingsViewModel;
 
     /*
      * Lifecycle
@@ -77,6 +85,8 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
     @Override
     public void onStart() {
         super.onStart();
+       // generateResponseAsync("<start_of_turn>user" + decodeOBD2Prompt + "<end_of_turn>");
+
         if(service != null)
             service.attach(this);
         else
@@ -224,71 +234,48 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         service.disconnect();
     }
 
-    private String decodeOBD2Prompt = "You are an OBD-II code translator. Your sole task is to interpret user queries about vehicle diagnostics and return the corresponding OBD-II hexadecimal request code. " +
-            "Your response must be strictly limited to the two-byte hexadecimal code without any explanation or additional text. Use the following mappings as your reference:\n" +
-            "Monitor Status: 0101\n" +
-            "DTC Causing Freeze Frame: 0102\n" +
-            "Fuel System Status: 0103\n" +
-            "Engine Load: 0104\n" +
-            "Coolant Temperature: 0105\n" +
-            "Short Term Fuel Trim—Bank 1: 0106\n" +
-            "Long Term Fuel Trim—Bank 1: 0107\n" +
-            "Short Term Fuel Trim—Bank 2: 0108\n" +
-            "Long Term Fuel Trim—Bank 2: 0109\n" +
-            "Fuel Pressure: 010A\n" +
-            "Intake Manifold Pressure: 010B\n" +
-            "Engine RPM: 010c\n" +
-            "Vehicle Speed: 010D\n" +
-            "Timing Advance: 010E\n" +
-            "Intake Air Temperature: 010F\n" +
-            "Mass Air Flow Rate: 0110\n" +
-            "Throttle Position: 0111\n" +
-            "Commanded Secondary Air Status: 0112\n" +
-            "Oxygen Sensors Present: 0113\n" +
-            "Oxygen Sensor 1: 0114\n" +
-            "Oxygen Sensor 2: 0115\n" +
-            "Run Time Since Engine Start: 011F";
+    private String advice_prompt ="You are an automotive mechanic, tell in 5 words about: ";
 
-    private String decodeOBD2ResponsePrompt =
-            "You are a highly skilled automotive diagnostic assistant. Your task is to interpret and decode OBD-II (On-Board Diagnostics) responses sent from an ELM327" +
-            "adapter. The responses are raw hexadecimal data and correspond to specific diagnostic commands. "
-            + "Instructions: Decode the hexadecimal response based on the OBD-II PID (Parameter Identifier) sent. "
-            + "    Provide a clear explanation of the decoded data. "
-            + "    Use standard OBD-II decoding rules to calculate the result, e.g., converting speed, RPM, or sensor values into human-readable formats. "
-            + "    If the response is invalid or malformed, explain why and suggest potential issues. "
-            + " Example Input and Output: "
-            + "Input: "
-            + " Command: 010D "
-            + "Response: 41 0D 32 "
-            + "Output: "
-            + "     Decoded Command: Vehicle Speed Sensor (PID 0x0D). "
-            + "    Decoded Value: The speed is 50 km/h. "
-            + "        Explanation: The hexadecimal value 32 is 50 in decimal. According to OBD-II, PID 0x0D reports speed in km/h. "
-            + " New Input for Decoding: "
-            + " Command: 010D "
-            + "Response: 141 0D 00 "
-            + "Your Turn: "
-            + "Decode the response. Provide the decoded value, explanation, and any additional insights in 3 lines crisply";
-
-
+    private final Semaphore semaphore = new Semaphore(1);
     private void generateResponseAsync(String prompt) {
         ExecutorService executorService = Executors.newSingleThreadExecutor();
         InferenceModel inferenceModel = InferenceModel.Companion.getInstance(getActivity());
         executorService.submit(() -> {
             try {
-                // Perform the async inference
-                inferenceModel.generateResponseAsync(prompt, new InferenceModel.InferenceCallback() {
-                    @Override
-                    public void onPartialResult(String partialResult, boolean isDone) {
-                        Log.d("LLMINFERENCE", "Partial Result: " + partialResult);
-                        receiveText.append(partialResult);
-                    }
-                    @Override
-                    public void onFinalResult(String finalResult) {
-                        Log.d("LLMINFERENCE", "Final Result: " + finalResult);
-                        receiveText.append(finalResult);
-                    }
-                });
+                if (prompt != null) {
+                    // Perform the async inference
+                    semaphore.acquire();
+                    inferenceModel.generateResponseAsync(prompt, new InferenceModel.InferenceCallback() {
+                        @Override
+                        public void onPartialResult(String partialResult, boolean isDone) {
+                            if (partialResult != null) {
+                                Log.d("LLMINFERENCE", "Partial Result: " + partialResult + "\n" + "isdone " + isDone);
+                                if (getActivity() != null) {
+                                    getActivity().runOnUiThread(() -> receiveText.append(partialResult));
+                                }
+                            } else {
+                                Log.d("LLMINFERENCE", "Received null partial result.");
+                            }
+                        }
+
+                        @Override
+                        public void onFinalResult(String finalResult) {
+                            if (finalResult != null) {
+                                Log.d("LLMINFERENCE", "finalResult : " + finalResult);
+                                if (getActivity() != null) {
+                                    getActivity().runOnUiThread(() -> receiveText.append(finalResult));
+                                }
+
+                                semaphore.release();
+                            } else {
+                                Log.d("LLMINFERENCE", "Received null partial result.");
+                            }
+                        }
+                    });
+                }
+                else {
+                    Log.d("LLMINFERENCE", "Prompt is null, cannot perform inference.");
+                }
             } catch (Exception e) {
                 Log.e("LLMINFERENCE", "Error during inference: ", e);
             }
@@ -297,6 +284,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
 
     private String OBD2inference(String prompt) {
         String updatedPrompt = prompt;
+
         try {
             InferenceModel inferenceModel = InferenceModel.Companion.getInstance(getActivity());
             updatedPrompt = inferenceModel.generateResponse(prompt);  // Get the generated response.
@@ -308,41 +296,183 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         return updatedPrompt;
     }
 
-    //        str = OBD2inference(decodeOBD2Prompt + str);
     private void send(String str) {
-        receiveText.append(str);
-        str = OBD2inference(decodeOBD2Prompt + str);
-        if (str != null && str.length() > 0) {
-            str = str.substring(0, 4); // Take the first character
-        }
+        SpannableStringBuilder prompt = new SpannableStringBuilder(str + '\n');
+        prompt.setSpan(new ForegroundColorSpan(getResources().getColor(R.color.colorSendText)), 0, prompt.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        receiveText.append(prompt);
 
-        Log.d("llminference", "str is" + str);
+        textEmbeddingsViewModel = new ViewModelProvider(this).get(TextEmbeddingsViewModel.class);
+        textEmbeddingsViewModel.setUpMLModel(getActivity().getApplicationContext());
 
-        if(connected != Connected.True) {
-            Toast.makeText(getActivity(), "not connected", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        try {
-            String msg;
-            byte[] data;
-            if(hexEnabled) {
-                StringBuilder sb = new StringBuilder();
-                TextUtil.toHexString(sb, TextUtil.fromHexString(str));
-                TextUtil.toHexString(sb, newline.getBytes());
-                msg = sb.toString();
-                data = TextUtil.fromHexString(msg);
-            } else {
-                msg = str;
-                data = (str + newline).getBytes();
+        String decodedobd2code = textEmbeddingsViewModel.calculateSimilarity(str);
+
+        /* give a creative answer */
+        if ("No match found".equals(decodedobd2code) || decodedobd2code == null) {
+            generateResponseAsync(advice_prompt + str);
+            /*str = OBD2inference( advice_prompt + str);
+            Log.d("OBD2LLM", "--str len is --" + str.length());
+            if (str != null && str.length() != 6) {
+                SpannableStringBuilder rprompt = new SpannableStringBuilder(str + '\n');
+                rprompt.setSpan(new ForegroundColorSpan(getResources().getColor(R.color.colorRecieveText)), 0, rprompt.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+                receiveText.append(rprompt);
+                return;
+            }*/
+        } else {    /* send obd2 code across */
+            str = decodedobd2code.substring(0, 4); // Take the first character
+            Log.d("OBD2LLM", "sending odb2code:" + str);
+            if (connected != Connected.True) {
+                Toast.makeText(getActivity(), "not connected", Toast.LENGTH_SHORT).show();
+                return;
             }
-            SpannableStringBuilder spn = new SpannableStringBuilder(msg + '\n');
-            spn.setSpan(new ForegroundColorSpan(getResources().getColor(R.color.colorSendText)), 0, spn.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-            service.write(data);
-        } catch (Exception e) {
-            onSerialIoError(e);
+            try {
+                String msg;
+                byte[] data;
+                if (hexEnabled) {
+                    StringBuilder sb = new StringBuilder();
+                    TextUtil.toHexString(sb, TextUtil.fromHexString(str));
+                    TextUtil.toHexString(sb, newline.getBytes());
+                    msg = sb.toString();
+                    data = TextUtil.fromHexString(msg);
+                } else {
+                    msg = str;
+                    data = (str + newline).getBytes();
+                }
+                SpannableStringBuilder spn = new SpannableStringBuilder(msg + '\n');
+                spn.setSpan(new ForegroundColorSpan(getResources().getColor(R.color.colorSendText)), 0, spn.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+                service.write(data);
+            } catch (Exception e) {
+                onSerialIoError(e);
+            }
         }
     }
 
+    /********************************************************/
+    public static String decodeOBDResponse(String response) {
+        // Remove spaces from the response string before processing
+        response = response.replaceAll("[^0-9A-Fa-f]", "");
+
+        // Ensure the response has an even length (if not, return error)
+        if (response.length() % 2 != 0) {
+            return "Invalid response length.";
+        }
+
+        // Convert the hex string response into an array of bytes using ByteBuffer
+        //byte[] dataBytes = hexStringToByteArray(response);
+        byte[] dataBytes = hexStringToByteArray(response);
+
+        // Log the byte array to check its contents
+        Log.d("OBDDecoder", "Decoded dataBytes: " + byteArrayToHex(dataBytes));
+
+        // Check if we have at least 2 bytes for mode and PID
+        if (dataBytes.length < 2) {
+            return "Invalid response: Not enough data for mode and PID.";
+        }
+
+        // Parse the Mode and PID from the response (assuming Mode 01 and PID 0x04)
+        int mode = dataBytes[0]; // Mode is the first byte
+        int pid = dataBytes[1];  // PID is the second byte
+
+        // Call the appropriate method for parsing based on Mode and PID
+        String tmp = parseOBDResponse(mode, pid, dataBytes);
+        Log.d("obd2llm", "tmp: " + tmp);
+        return tmp;
+
+    }
+
+    // Helper method to convert hex string to byte array
+    public static byte[] hexStringToByteArray(String s) {
+        int len = s.length();
+        byte[] data = new byte[len / 2];
+        for (int i = 0; i < len; i += 2) {
+            data[i / 2] = (byte) ((Character.digit(s.charAt(i), 16) << 4)
+                    + Character.digit(s.charAt(i + 1), 16));
+        }
+        return data;
+    }
+
+    // Helper method to convert byte array to hex string
+    public static String byteArrayToHex(byte[] byteArray) {
+        StringBuilder hexString = new StringBuilder();
+        for (byte b : byteArray) {
+            hexString.append(String.format("%02X", b)); // Format each byte as a 2-character hex string
+            hexString.append(" "); // Add space between each byte
+        }
+        return hexString.toString().trim(); // Trim the last space
+    }
+
+
+    /************************/
+
+    public static String parseOBDResponse(int mode, int pid, byte[] dataBytes) {
+        if (mode != 0x41) {
+            String errorMessage = "Only Mode 01 (Show current data) is supported.";
+            Log.d("OBDDecoder", errorMessage);
+            return errorMessage;
+        }
+
+        switch (pid) {
+            case 0x04: // Calculated Engine Load
+                double engineLoad = (dataBytes[2] / 255.0) * 100;
+                String engineLoadStr = String.format("Engine load is %.1f%%.", engineLoad);
+                Log.d("OBDDecoder", engineLoadStr);
+                return engineLoadStr;
+
+            case 0x05: // Engine Coolant Temperature
+                int coolantTemp = dataBytes[2] - 40;
+                String coolantTempStr = String.format("Engine coolant temperature is %d°C.", coolantTemp);
+                Log.d("OBDDecoder", coolantTempStr);
+                return coolantTempStr;
+
+            case 0x06: // Short Term Fuel Trim (Bank 1)
+                double shortTermFuelTrim = ((dataBytes[2] - 128) * 100.0) / 128;
+                String shortTermFuelTrimStr = String.format("Short term fuel trim (Bank 1) is %.1f%%.", shortTermFuelTrim);
+                Log.d("OBDDecoder", shortTermFuelTrimStr);
+                return shortTermFuelTrimStr;
+
+            case 0x07: // Long Term Fuel Trim (Bank 1)
+                double longTermFuelTrim = ((dataBytes[2] - 128) * 100.0) / 128;
+                String longTermFuelTrimStr = String.format("Long term fuel trim (Bank 1) is %.1f%%.", longTermFuelTrim);
+                Log.d("OBDDecoder", longTermFuelTrimStr);
+                return longTermFuelTrimStr;
+
+            case 0x0A: // Fuel Pressure
+                int fuelPressure = dataBytes[2] * 3;
+                String fuelPressureStr = String.format("Fuel pressure is %d kPa.", fuelPressure);
+                Log.d("OBDDecoder", fuelPressureStr);
+                return fuelPressureStr;
+
+            case 0x0B: // Intake Manifold Absolute Pressure
+                int manifoldPressure = dataBytes[2];
+                String manifoldPressureStr = String.format("Intake manifold absolute pressure is %d kPa.", manifoldPressure);
+                Log.d("OBDDecoder", manifoldPressureStr);
+                return manifoldPressureStr;
+
+            case 0x0C: // Engine RPM
+                int byte3 = (dataBytes.length > 3) ? dataBytes[3] : 0;
+                int rpm = ((dataBytes[2] * 256) + byte3) / 4;
+                String rpmStr = String.format("Engine speed or rpm is %d ", rpm);
+                Log.d("OBDDecoder", rpmStr);
+                return rpmStr;
+
+            case 0x0D: // Vehicle Speed
+                int vehicleSpeed = dataBytes[2];
+                String vehicleSpeedStr = String.format("Vehicle speed is %d km/h.", vehicleSpeed);
+                Log.d("OBDDecoder", vehicleSpeedStr);
+                return vehicleSpeedStr;
+
+            case 0x0E: // Timing Advance
+                double timingAdvance = (dataBytes[2] / 2.0) - 64;
+                String timingAdvanceStr = String.format("Timing advance is %.1f°.", timingAdvance);
+                Log.d("OBDDecoder", timingAdvanceStr);
+                return timingAdvanceStr;
+
+            default:
+                String defaultMessage = "PID not recognized or not supported.";
+                Log.d("OBDDecoder", defaultMessage);
+                return defaultMessage;
+        }
+    }
+    /************************/
     private void receive(ArrayDeque<byte[]> datas) {
         SpannableStringBuilder spn = new SpannableStringBuilder();
         for (byte[] data : datas) {
@@ -368,11 +498,13 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
                 spn.append(TextUtil.toCaretString(msg, newline.length() != 0));
             }
         }
-        Log.d("ODB2llm", "msg from OBD2" + spn);
-        String str = "";
-        //str = OBD2inference(decodeOBD2ResponsePrompt + spn);
-        generateResponseAsync(String.valueOf(spn));
-        receiveText.append(str);
+        String comment_on = decodeOBDResponse(String.valueOf(spn));
+
+        Log.d("ODB2llm", "msg from OBD2" + spn + "meaning: " + comment_on);
+        if (comment_on.split("\\s+").length > 3 && getActivity() != null) {
+            getActivity().runOnUiThread(() -> receiveText.append(comment_on));
+            generateResponseAsync("<start_of_turn>user" + advice_prompt + comment_on + "<end_of_turn>");
+        }
     }
 
     private void status(String str) {
