@@ -30,12 +30,14 @@ class InferenceModel private constructor(context: Context) {
         val options = LlmInference.LlmInferenceOptions.builder()
             .setModelPath(MODEL_PATH)
             .setMaxTokens(1024)
+            .setTopK(20)
+            .setTemperature(0.3F)
             .setResultListener { partialResult, done ->
                 _partialResults.tryEmit(partialResult to done)
             }
             .build()
 
-        llmInference = LlmInference.createFromOptions(context, options)
+            llmInference = LlmInference.createFromOptions(context, options)
     }
 
     fun generateResponseAsync(prompt: String, callback: InferenceCallback) {

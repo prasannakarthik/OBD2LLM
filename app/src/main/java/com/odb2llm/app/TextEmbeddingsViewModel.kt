@@ -1,4 +1,4 @@
-package ai.wordbox.dogsembeddings
+package com.odb2llm.app
 
 import android.content.Context
 import android.util.Log

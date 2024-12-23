@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">OBD2 chat</string>
+    <string name="app_name">ChatOBD2</string>
     <string name="devices">Bluetooth Devices</string>
 
     <string name="bluetooth_permission_title">Bluetooth permission</string>

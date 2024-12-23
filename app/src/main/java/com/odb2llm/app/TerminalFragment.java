@@ -42,7 +42,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 
-import ai.wordbox.dogsembeddings.TextEmbeddingsViewModel;
+import com.odb2llm.app.TextEmbeddingsViewModel;
 
 public class TerminalFragment extends Fragment implements ServiceConnection, SerialListener {
 
@@ -85,7 +85,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
     @Override
     public void onStart() {
         super.onStart();
-       // generateResponseAsync("<start_of_turn>user" + decodeOBD2Prompt + "<end_of_turn>");
+        status("Loading model in a few seconds..\n");
 
         if(service != null)
             service.attach(this);
@@ -234,8 +234,6 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         service.disconnect();
     }
 
-    private String advice_prompt ="You are an automotive mechanic, tell in 5 words about: ";
-
     private final Semaphore semaphore = new Semaphore(1);
     private void generateResponseAsync(String prompt) {
         ExecutorService executorService = Executors.newSingleThreadExecutor();
@@ -249,10 +247,10 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
                         @Override
                         public void onPartialResult(String partialResult, boolean isDone) {
                             if (partialResult != null) {
-                                Log.d("LLMINFERENCE", "Partial Result: " + partialResult + "\n" + "isdone " + isDone);
-                                if (getActivity() != null) {
-                                    getActivity().runOnUiThread(() -> receiveText.append(partialResult));
-                                }
+                                    Log.d("LLMINFERENCE", "Partial Result: " + partialResult + "\n" + "isdone " + isDone);
+                                    if (getActivity() != null) {
+                                        getActivity().runOnUiThread(() -> receiveText.append(partialResult));
+                                    }
                             } else {
                                 Log.d("LLMINFERENCE", "Received null partial result.");
                             }
@@ -289,6 +287,10 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
             InferenceModel inferenceModel = InferenceModel.Companion.getInstance(getActivity());
             updatedPrompt = inferenceModel.generateResponse(prompt);  // Get the generated response.
             Log.d("LLMInference", "Generated response: " + updatedPrompt);
+            if (getActivity() != null) {
+                String finalUpdatedPrompt = updatedPrompt;
+                getActivity().runOnUiThread(() -> receiveText.append(finalUpdatedPrompt+ "\n"));
+            }
         } catch (IllegalArgumentException e) {
         } catch (Exception e) {
             Log.e("LLMInference", "Unexpected error occurred: " + e.getMessage(), e);
@@ -299,7 +301,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
     private void send(String str) {
         SpannableStringBuilder prompt = new SpannableStringBuilder(str + '\n');
         prompt.setSpan(new ForegroundColorSpan(getResources().getColor(R.color.colorSendText)), 0, prompt.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-        receiveText.append(prompt);
+        receiveText.append(prompt+"\n");
 
         textEmbeddingsViewModel = new ViewModelProvider(this).get(TextEmbeddingsViewModel.class);
         textEmbeddingsViewModel.setUpMLModel(getActivity().getApplicationContext());
@@ -308,14 +310,14 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
 
         /* give a creative answer */
         if ("No match found".equals(decodedobd2code) || decodedobd2code == null) {
-            generateResponseAsync(advice_prompt + str);
-            /*str = OBD2inference( advice_prompt + str);
+            //generateResponseAsync(advice_prompt + str);
+            //generateResponseAsync("reply to this in 10 words stricly: " + str);
+            OBD2inference("<start_of_turn>user Respond in not more than 10 words only" + str + "<end_of_turn>model>");
             Log.d("OBD2LLM", "--str len is --" + str.length());
-            if (str != null && str.length() != 6) {
+            /*if (str != null && str.length() != 6) {
                 SpannableStringBuilder rprompt = new SpannableStringBuilder(str + '\n');
                 rprompt.setSpan(new ForegroundColorSpan(getResources().getColor(R.color.colorRecieveText)), 0, rprompt.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
                 receiveText.append(rprompt);
-                return;
             }*/
         } else {    /* send obd2 code across */
             str = decodedobd2code.substring(0, 4); // Take the first character
@@ -365,7 +367,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
 
         // Check if we have at least 2 bytes for mode and PID
         if (dataBytes.length < 2) {
-            return "Invalid response: Not enough data for mode and PID.";
+            return "no pid";
         }
 
         // Parse the Mode and PID from the response (assuming Mode 01 and PID 0x04)
@@ -407,7 +409,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         if (mode != 0x41) {
             String errorMessage = "Only Mode 01 (Show current data) is supported.";
             Log.d("OBDDecoder", errorMessage);
-            return errorMessage;
+            return "no message";
         }
 
         switch (pid) {
@@ -469,7 +471,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
             default:
                 String defaultMessage = "PID not recognized or not supported.";
                 Log.d("OBDDecoder", defaultMessage);
-                return defaultMessage;
+                return "no match";
         }
     }
     /************************/
@@ -502,8 +504,11 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
 
         Log.d("ODB2llm", "msg from OBD2" + spn + "meaning: " + comment_on);
         if (comment_on.split("\\s+").length > 3 && getActivity() != null) {
-            getActivity().runOnUiThread(() -> receiveText.append(comment_on));
-            generateResponseAsync("<start_of_turn>user" + advice_prompt + comment_on + "<end_of_turn>");
+            //getActivity().runOnUiThread(() -> receiveText.append("\n" + comment_on + "\n\n"));
+            //generateResponseAsync("<start_of_turn>user As an automotive mechanic, provide only a 5-word comment on" + comment_on + "nothing else. " +
+ //                  "Do not include 'Sure,' 'Here is,' or any additional text. Respond with exactly 5 words <end_of_turn>model");
+            OBD2inference("<start_of_turn>user As an automotive mechanic, provide only a 5-word comment on" + comment_on + "nothing else. " +
+                "Do not include 'Sure,' 'Here is,' or any additional text. Respond with exactly 5 words <end_of_turn>");
         }
     }
 
@@ -538,6 +543,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
     public void onSerialConnect() {
         status("connected");
         connected = Connected.True;
+        OBD2inference("<start_of_turn>user You're auto mechanic and diagnostics technical. Introduce yourslef in 4 words<end_of_turn>model");
     }
 
     @Override
