@@ -19,6 +19,7 @@ import android.text.SpannableStringBuilder;
 import android.text.method.ScrollingMovementMethod;
 import android.text.style.ForegroundColorSpan;
 import android.util.Log;
+import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuInflater;
@@ -148,6 +149,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         receiveText.setMovementMethod(ScrollingMovementMethod.getInstance());
 
         sendText = view.findViewById(R.id.send_text);
+
         hexWatcher = new TextUtil.HexWatcher(sendText);
         hexWatcher.enable(hexEnabled);
         sendText.addTextChangedListener(hexWatcher);
@@ -288,8 +290,26 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
             updatedPrompt = inferenceModel.generateResponse(prompt);  // Get the generated response.
             Log.d("LLMInference", "Generated response: " + updatedPrompt);
             if (getActivity() != null) {
-                String finalUpdatedPrompt = updatedPrompt;
-                getActivity().runOnUiThread(() -> receiveText.append(finalUpdatedPrompt+ "\n"));
+                //String finalUpdatedPrompt = updatedPrompt;
+                SpannableStringBuilder spannablePrompt = new SpannableStringBuilder(updatedPrompt + '\n'); // Combine updatedPrompt and newline
+                int promptLength = prompt.length(); // Save prompt length for span application
+
+                // Ensure prompt length doesn't exceed the spannable text length
+                if (promptLength > spannablePrompt.length()) {
+                    Log.e("SpanError", "Prompt length exceeds spannable text length. Adjusting.");
+                    promptLength = spannablePrompt.length();
+                }
+
+                // Apply span with validated range
+                spannablePrompt.setSpan(
+                        new ForegroundColorSpan(getResources().getColor(R.color.colorSendText)),
+                        0,
+                        promptLength,
+                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                );
+
+                // Update the UI with the spannable text
+                getActivity().runOnUiThread(() -> receiveText.append(spannablePrompt));
             }
         } catch (IllegalArgumentException e) {
         } catch (Exception e) {
@@ -299,6 +319,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
     }
 
     private void send(String str) {
+        sendText.setText("");
         SpannableStringBuilder prompt = new SpannableStringBuilder(str + '\n');
         prompt.setSpan(new ForegroundColorSpan(getResources().getColor(R.color.colorSendText)), 0, prompt.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
         receiveText.append(prompt+"\n");
@@ -322,6 +343,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         } else {    /* send obd2 code across */
             str = decodedobd2code.substring(0, 4); // Take the first character
             Log.d("OBD2LLM", "sending odb2code:" + str);
+
             if (connected != Connected.True) {
                 Toast.makeText(getActivity(), "not connected", Toast.LENGTH_SHORT).show();
                 return;
@@ -363,7 +385,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         byte[] dataBytes = hexStringToByteArray(response);
 
         // Log the byte array to check its contents
-        Log.d("OBDDecoder", "Decoded dataBytes: " + byteArrayToHex(dataBytes));
+        Log.d("OBD2llm", "Decoded dataBytes: " + byteArrayToHex(dataBytes));
 
         // Check if we have at least 2 bytes for mode and PID
         if (dataBytes.length < 2) {
@@ -402,76 +424,144 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         return hexString.toString().trim(); // Trim the last space
     }
 
+    // Helper method to decode the category of the DTC
 
     /************************/
 
     public static String parseOBDResponse(int mode, int pid, byte[] dataBytes) {
         if (mode != 0x41) {
             String errorMessage = "Only Mode 01 (Show current data) is supported.";
-            Log.d("OBDDecoder", errorMessage);
+            Log.d("OBD2llm", errorMessage);
             return "no message";
         }
 
         switch (pid) {
+            case 0x01: // Monitor Status (since DTCs cleared)
+                // Byte 2 represents the MIL status and the number of stored DTCs
+                boolean milOn = (dataBytes[2] & 0x80) != 0; // Check if the MIL (bit 7) is ON
+                int numDTCs = dataBytes[2] & 0x7F;          // Extract bits 6–0 for number of DTCs
+
+                // Byte 3 indicates the availability of tests
+                int testAvailability = dataBytes[3];        // Bit mask for available tests
+
+                // Byte 4 shows the completion status of the tests
+                int testCompletionStatus = dataBytes[4];    // Bit mask for completed tests
+
+                // Format the output
+                String milStatusStr = milOn ? "ON" : "OFF";
+                String monitorStatusStr = String.format(
+                        "MIL status: %s, Stored DTCs: %d, Test availability: 0x%02X, Test completion: 0x%02X",
+                        milStatusStr, numDTCs, testAvailability, testCompletionStatus);
+
+                // Log the result
+                Log.d("OBD2llm", monitorStatusStr);
+                return monitorStatusStr;
+
+            case 0x03: // Diagnostic Trouble Codes (DTCs)
+                StringBuilder dtcBuilder = new StringBuilder();
+                dtcBuilder.append("Stored DTCs: ");
+
+                // Each DTC is represented by two bytes (5 characters after decoding)
+                for (int i = 2; i < dataBytes.length; i += 2) {
+                    if (dataBytes[i] == 0 && dataBytes[i + 1] == 0) {
+                        // No more DTCs (0x0000 indicates no further trouble codes)
+                        break;
+                    }
+
+                    // Decode the DTC
+                    char category = decodeDtcCategory(dataBytes[i]); // Get category (P, C, B, or U)
+                    int code = ((dataBytes[i] & 0x0F) << 8) | dataBytes[i + 1]; // Combine nibbles
+                    String dtc = String.format("%c%04d", category, code);
+
+                    // Append to the result
+                    dtcBuilder.append(dtc).append(", ");
+                }
+
+                // Remove trailing comma and space, if any
+                if (dtcBuilder.length() > 13) {
+                    dtcBuilder.setLength(dtcBuilder.length() - 2);
+                } else {
+                    dtcBuilder.append("None");
+                }
+
+                String dtcResult = dtcBuilder.toString();
+                Log.d("OBD2llm", dtcResult);
+                return dtcResult;
+
             case 0x04: // Calculated Engine Load
-                double engineLoad = (dataBytes[2] / 255.0) * 100;
+                double engineLoad = (dataBytes[2] / 2.0);
                 String engineLoadStr = String.format("Engine load is %.1f%%.", engineLoad);
-                Log.d("OBDDecoder", engineLoadStr);
+                Log.d("OBD2llm", engineLoadStr);
                 return engineLoadStr;
 
             case 0x05: // Engine Coolant Temperature
                 int coolantTemp = dataBytes[2] - 40;
                 String coolantTempStr = String.format("Engine coolant temperature is %d°C.", coolantTemp);
-                Log.d("OBDDecoder", coolantTempStr);
+                Log.d("OBD2llm", coolantTempStr);
                 return coolantTempStr;
 
             case 0x06: // Short Term Fuel Trim (Bank 1)
                 double shortTermFuelTrim = ((dataBytes[2] - 128) * 100.0) / 128;
                 String shortTermFuelTrimStr = String.format("Short term fuel trim (Bank 1) is %.1f%%.", shortTermFuelTrim);
-                Log.d("OBDDecoder", shortTermFuelTrimStr);
+                Log.d("OBD2llm", shortTermFuelTrimStr);
                 return shortTermFuelTrimStr;
 
             case 0x07: // Long Term Fuel Trim (Bank 1)
                 double longTermFuelTrim = ((dataBytes[2] - 128) * 100.0) / 128;
                 String longTermFuelTrimStr = String.format("Long term fuel trim (Bank 1) is %.1f%%.", longTermFuelTrim);
-                Log.d("OBDDecoder", longTermFuelTrimStr);
+                Log.d("OBD2llm", longTermFuelTrimStr);
                 return longTermFuelTrimStr;
 
             case 0x0A: // Fuel Pressure
                 int fuelPressure = dataBytes[2] * 3;
                 String fuelPressureStr = String.format("Fuel pressure is %d kPa.", fuelPressure);
-                Log.d("OBDDecoder", fuelPressureStr);
+                Log.d("OBD2llm", fuelPressureStr);
                 return fuelPressureStr;
 
             case 0x0B: // Intake Manifold Absolute Pressure
                 int manifoldPressure = dataBytes[2];
                 String manifoldPressureStr = String.format("Intake manifold absolute pressure is %d kPa.", manifoldPressure);
-                Log.d("OBDDecoder", manifoldPressureStr);
+                Log.d("OBD2llm", manifoldPressureStr);
                 return manifoldPressureStr;
 
             case 0x0C: // Engine RPM
                 int byte3 = (dataBytes.length > 3) ? dataBytes[3] : 0;
                 int rpm = ((dataBytes[2] * 256) + byte3) / 4;
                 String rpmStr = String.format("Engine speed or rpm is %d ", rpm);
-                Log.d("OBDDecoder", rpmStr);
+                Log.d("OBD2llm", rpmStr);
                 return rpmStr;
 
             case 0x0D: // Vehicle Speed
                 int vehicleSpeed = dataBytes[2];
                 String vehicleSpeedStr = String.format("Vehicle speed is %d km/h.", vehicleSpeed);
-                Log.d("OBDDecoder", vehicleSpeedStr);
+                Log.d("OBD2llm", vehicleSpeedStr);
                 return vehicleSpeedStr;
 
             case 0x0E: // Timing Advance
                 double timingAdvance = (dataBytes[2] / 2.0) - 64;
                 String timingAdvanceStr = String.format("Timing advance is %.1f°.", timingAdvance);
-                Log.d("OBDDecoder", timingAdvanceStr);
+                Log.d("OBD2llm", timingAdvanceStr);
                 return timingAdvanceStr;
 
             default:
                 String defaultMessage = "PID not recognized or not supported.";
-                Log.d("OBDDecoder", defaultMessage);
+                Log.d("OBD2llm", defaultMessage);
                 return "no match";
+        }
+    }
+    private static char decodeDtcCategory(int byteValue) {
+        int categoryCode = (byteValue & 0xC0) >> 6; // Extract the first 2 bits
+        switch (categoryCode) {
+            case 0:
+                return 'P'; // Powertrain
+            case 1:
+                return 'C'; // Chassis
+            case 2:
+                return 'B'; // Body
+            case 3:
+                return 'U'; // Network
+            default:
+                return '?'; // Unknown (shouldn't happen)
         }
     }
     /************************/
@@ -500,16 +590,23 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
                 spn.append(TextUtil.toCaretString(msg, newline.length() != 0));
             }
         }
+        if(String.valueOf(spn).contains("NO DATA")) {
+            SpannableStringBuilder prompt = new SpannableStringBuilder("No data from OBD\n");
+            prompt.setSpan(new ForegroundColorSpan(getResources().getColor(R.color.colorSendText)), 0, prompt.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+            getActivity().runOnUiThread(() -> receiveText.append(prompt));
+        }
+
         String comment_on = decodeOBDResponse(String.valueOf(spn));
 
         Log.d("ODB2llm", "msg from OBD2" + spn + "meaning: " + comment_on);
         if (comment_on.split("\\s+").length > 3 && getActivity() != null) {
-            //getActivity().runOnUiThread(() -> receiveText.append("\n" + comment_on + "\n\n"));
+          //   getActivity().runOnUiThread(() -> receiveText.append("\n" + comment_on + "\n\n"));
             //generateResponseAsync("<start_of_turn>user As an automotive mechanic, provide only a 5-word comment on" + comment_on + "nothing else. " +
  //                  "Do not include 'Sure,' 'Here is,' or any additional text. Respond with exactly 5 words <end_of_turn>model");
             OBD2inference("<start_of_turn>user As an automotive mechanic, provide only a 5-word comment on" + comment_on + "nothing else. " +
                 "Do not include 'Sure,' 'Here is,' or any additional text. Respond with exactly 5 words <end_of_turn>");
         }
+
     }
 
     private void status(String str) {
@@ -543,7 +640,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
     public void onSerialConnect() {
         status("connected");
         connected = Connected.True;
-        OBD2inference("<start_of_turn>user You're auto mechanic and diagnostics technical. Introduce yourslef in 4 words<end_of_turn>model");
+        //OBD2inference("<start_of_turn>user You're auto mechanic and diagnostics technical. Introduce yourslef in 4 words<end_of_turn>model");
     }
 
     @Override

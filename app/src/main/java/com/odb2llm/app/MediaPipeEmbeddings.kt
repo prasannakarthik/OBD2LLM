@@ -8,6 +8,7 @@ import com.google.mediapipe.tasks.text.textembedder.TextEmbedder
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.suspendCancellableCoroutine
+import java.util.Locale
 
 data class SentenceSimilarity(
     val mainSentence: String,
@@ -21,7 +22,7 @@ class MediaPipeEmbeddings {
 
     companion object {
         const val MODEL_NAME = "universal_sentence_encoder.tflite"
-        const val MIN_SIMILARITY_VALUE = 0.8
+        const val MIN_SIMILARITY_VALUE = 0.95
     }
 
     private lateinit var textEmbedder: TextEmbedder
@@ -53,12 +54,15 @@ class MediaPipeEmbeddings {
             try {
                 textEmbedder.let {
                     Log.i("TextEmbeddingsViewModel", "Main Sentence => $mainSentence")
-                    val mainSentenceEmbed = getEmbeddings(mainSentence)
+                    val normalizedMainSentence = mainSentence.lowercase(Locale.getDefault())
+                    val mainSentenceEmbed = getEmbeddings(normalizedMainSentence)
 
                     val similaritySentences: MutableList<SentenceSimilarity> =
                         ArrayList<SentenceSimilarity>().apply {
                             sentences.forEach {
-                                val sentenceEmbed = getEmbeddings(it)
+                                val normalizedSentence = it.lowercase(Locale.getDefault()) // Normalize each sentence
+                                val sentenceEmbed = getEmbeddings(normalizedSentence) // Use the normalized version
+
                                 val similarity =
                                     TextEmbedder.cosineSimilarity(mainSentenceEmbed, sentenceEmbed)
                                 Log.i(

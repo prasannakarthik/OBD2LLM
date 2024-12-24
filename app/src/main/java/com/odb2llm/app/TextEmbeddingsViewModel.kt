@@ -45,15 +45,16 @@ class TextEmbeddingsViewModel : ViewModel() {
             mediaPipeEmbeddings.setUpMLModel(context)
             uiStateTextEmbeddings = uiStateTextEmbeddings.copy(
                 sentencesWithCodes = listOf(
-                    SentenceWithCode("0101", "What is the monitor status since DTCs cleared?"),
-                    SentenceWithCode("0102", "What DTC caused the freeze frame to be stored?"),
+                    SentenceWithCode("0101", "What is the error code or DTC code or Diagnostic Trouble Codes in my car? or vehicle health"),
+                    SentenceWithCode("0102", "What DTC caused the freeze frame to be stored or " +
+                            "my engine lights on or read my error codes or read trouble codes?"),
                     SentenceWithCode("0103", "What is the fuel system status?"),
                     SentenceWithCode("0104", "What is the engine load?"),
                     SentenceWithCode("0105", "What is the engine coolant temperature?"),
-                    SentenceWithCode("0106", "What is the short term fuel trim for Bank 1?"),
-                    SentenceWithCode("0107", "What is the long term fuel trim for Bank 1?"),
-                    SentenceWithCode("0108", "What is the short term fuel trim for Bank 2?"),
-                    SentenceWithCode("0109", "What is the long term fuel trim for Bank 2?"),
+                    SentenceWithCode("0106", "What is the short term fuel trim for Bank 1 or STFT Bank 1?"),
+                    SentenceWithCode("0107", "What is the long term fuel trim for Bank 1 or LTFT Bank 1?"),
+                    SentenceWithCode("0108", "What is the short term fuel trim for Bank 2 or STFT Bank 2?"),
+                    SentenceWithCode("0109", "What is the long term fuel trim for Bank 2 or LTFT Bank 2?"),
                     SentenceWithCode("010A", "What is the fuel pressure?"),
                     SentenceWithCode("010B", "What is the intake manifold pressure?"),
                     SentenceWithCode("010C", "What is the engine rpm or speed or revolutions?"),
@@ -61,7 +62,7 @@ class TextEmbeddingsViewModel : ViewModel() {
                     SentenceWithCode("010E", "What is the timing advance?"),
                     SentenceWithCode("010F", "What is the intake air temperature?"),
                     SentenceWithCode("0110", "What is the MAF air flow rate?"),
-                    SentenceWithCode("0111", "What is the throttle position?"),
+                    SentenceWithCode("0111", "What is the throttle position or absolute throttle position?"),
                     SentenceWithCode("0112", "What is the commanded secondary air status?"),
                     SentenceWithCode("0113", "How many oxygen sensors are present in the 2 banks?"),
                     SentenceWithCode("0114", "What is the status of Oxygen Sensor 1?"),
@@ -107,8 +108,8 @@ class TextEmbeddingsViewModel : ViewModel() {
                     uiStateTextEmbeddings.sentencesWithCodes.find { code -> code.sentence == it.sentence }?.code
                 } ?: "No match found"
 
-                Log.d("TextEmbeddingsViewModel", "Most Similar Sentence: ${mostSimilarSentence?.sentence}")
-                Log.d("TextEmbeddingsViewModel", "Code of Most Similar Sentence: $codeOfMostSimilarSentence")
+                Log.d("OBD2LLM", "Most Similar Sentence: ${mostSimilarSentence?.sentence}")
+                Log.d("OBD2LLM", "Code of Most Similar Sentence: $codeOfMostSimilarSentence")
 
                 uiStateTextEmbeddings = uiStateTextEmbeddings.copy(
                     state = State.Success,
