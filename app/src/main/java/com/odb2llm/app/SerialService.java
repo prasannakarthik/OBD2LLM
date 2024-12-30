@@ -14,7 +14,6 @@ import android.os.IBinder;
 import android.os.Looper;
 
 import androidx.annotation.Nullable;
-import androidx.annotation.RequiresApi;
 import androidx.core.app.NotificationCompat;
 
 import java.io.IOException;
@@ -150,13 +149,6 @@ public class SerialService extends Service implements SerialListener {
         }
     }
 
-    @RequiresApi(Build.VERSION_CODES.O)
-    public boolean areNotificationsEnabled() {
-        NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-        NotificationChannel nc = nm.getNotificationChannel(Constants.NOTIFICATION_CHANNEL);
-        return nm.areNotificationsEnabled() && nc != null && nc.getImportance() > NotificationManager.IMPORTANCE_NONE;
-    }
-
     private void createNotification() {
         Intent disconnectIntent = new Intent()
                 .setPackage(getPackageName())
@@ -165,7 +157,7 @@ public class SerialService extends Service implements SerialListener {
                 .setClassName(this, Constants.INTENT_CLASS_MAIN_ACTIVITY)
                 .setAction(Intent.ACTION_MAIN)
                 .addCategory(Intent.CATEGORY_LAUNCHER);
-        int flags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0;
+        int flags = PendingIntent.FLAG_IMMUTABLE;
         PendingIntent disconnectPendingIntent = PendingIntent.getBroadcast(this, 1, disconnectIntent, flags);
         PendingIntent restartPendingIntent = PendingIntent.getActivity(this, 1, restartIntent,  flags);
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, Constants.NOTIFICATION_CHANNEL)
@@ -229,14 +221,6 @@ public class SerialService extends Service implements SerialListener {
 
     public void onSerialRead(ArrayDeque<byte[]> datas) { throw new UnsupportedOperationException(); }
 
-    /**
-     * reduce number of UI updates by merging data chunks.
-     * Data can arrive at hundred chunks per second, but the UI can only
-     * perform a dozen updates if receiveText already contains much text.
-     *
-     * On new data inform UI thread once (1).
-     * While not consumed (2), add more data (3).
-     */
     public void onSerialRead(byte[] data) {
         if(connected) {
             synchronized (this) {

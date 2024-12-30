@@ -13,10 +13,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 
 sealed class State {
-    object Loading : State()
-    object Success : State()
-    object Error : State()
-    object Empty : State()
+    data object Loading : State()
+    data object Success : State()
+    data object Error : State()
+    data object Empty : State()
 }
 
 data class SentenceWithCode(val code: String, val sentence: String)
@@ -32,8 +32,7 @@ class TextEmbeddingsViewModel : ViewModel() {
 
     private lateinit var mediaPipeEmbeddings: MediaPipeEmbeddings
 
-    var uiStateTextEmbeddings by mutableStateOf(TextEmbeddingsUiState(state = State.Empty))
-        private set
+    private var uiStateTextEmbeddings by mutableStateOf(TextEmbeddingsUiState(state = State.Empty))
 
     fun setUpMLModel(context: Context) {
         mediaPipeEmbeddings = MediaPipeEmbeddings()
@@ -45,9 +44,8 @@ class TextEmbeddingsViewModel : ViewModel() {
             mediaPipeEmbeddings.setUpMLModel(context)
             uiStateTextEmbeddings = uiStateTextEmbeddings.copy(
                 sentencesWithCodes = listOf(
-                    SentenceWithCode("0101", "What is the error code or DTC code or Diagnostic Trouble Codes in my car? or vehicle health"),
-                    SentenceWithCode("0102", "What DTC caused the freeze frame to be stored or " +
-                            "my engine lights on or read my error codes or read trouble codes?"),
+                    SentenceWithCode("0101", "is my engine light on (or) are there any codes present?"),
+                    SentenceWithCode("0102", "Read DTC error code (or) Diagnostic Trouble Codes (or) vehicle health (or) check engine light"),
                     SentenceWithCode("0103", "What is the fuel system status?"),
                     SentenceWithCode("0104", "What is the engine load?"),
                     SentenceWithCode("0105", "What is the engine coolant temperature?"),
@@ -90,7 +88,6 @@ class TextEmbeddingsViewModel : ViewModel() {
 
                 // Map similarities and filter by threshold
                 val sentencesWithSimilarity = similarities.mapNotNull { similarity ->
-                    val sentenceWithCode = uiStateTextEmbeddings.sentencesWithCodes.find { it.sentence == similarity.sentence }
                     if (similarity.resultSimilarity >= similarityThreshold) {
                         similarity.copy(
                             mainSentenceEmbeddings = similarity.mainSentenceEmbeddings,
@@ -108,8 +105,8 @@ class TextEmbeddingsViewModel : ViewModel() {
                     uiStateTextEmbeddings.sentencesWithCodes.find { code -> code.sentence == it.sentence }?.code
                 } ?: "No match found"
 
-                Log.d("OBD2LLM", "Most Similar Sentence: ${mostSimilarSentence?.sentence}")
-                Log.d("OBD2LLM", "Code of Most Similar Sentence: $codeOfMostSimilarSentence")
+                Log.d(OBDUtils.TAG, "Most Similar Sentence: ${mostSimilarSentence?.sentence}")
+                Log.d(OBDUtils.TAG, "Code of Most Similar Sentence: $codeOfMostSimilarSentence")
 
                 uiStateTextEmbeddings = uiStateTextEmbeddings.copy(
                     state = State.Success,

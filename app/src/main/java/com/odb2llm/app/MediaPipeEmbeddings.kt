@@ -1,7 +1,6 @@
-package com.odb2llm.app;
+package com.odb2llm.app
 
 import android.content.Context
-import android.util.Log
 import com.google.mediapipe.tasks.core.BaseOptions
 import com.google.mediapipe.tasks.core.Delegate
 import com.google.mediapipe.tasks.text.textembedder.TextEmbedder
@@ -53,7 +52,6 @@ class MediaPipeEmbeddings {
         return suspendCancellableCoroutine { continuation ->
             try {
                 textEmbedder.let {
-                    Log.i("TextEmbeddingsViewModel", "Main Sentence => $mainSentence")
                     val normalizedMainSentence = mainSentence.lowercase(Locale.getDefault())
                     val mainSentenceEmbed = getEmbeddings(normalizedMainSentence)
 
@@ -65,14 +63,7 @@ class MediaPipeEmbeddings {
 
                                 val similarity =
                                     TextEmbedder.cosineSimilarity(mainSentenceEmbed, sentenceEmbed)
-                                Log.i(
-                                    "TextEmbeddingsViewModel",
-                                    "Embeddings Main Sentence => $mainSentence"
-                                )
-                                Log.i(
-                                    "TextEmbeddingsViewModel",
-                                    "Embeddings Another Sentence => $sentenceEmbed"
-                                )
+
                                 if (similarity > MIN_SIMILARITY_VALUE) {
                                     this.add(
                                         SentenceSimilarity(
