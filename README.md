@@ -21,7 +21,7 @@ Install the app and use natural language to talk to OBD2 port. Below are some ex
 Responses will be in natural language.
 
 
-![](https://github.com/prasannakarthik/OBD2LLM/blob/master/1735701406772.gif)
+<img src="https://github.com/prasannakarthik/OBD2LLM/blob/master/1735701406772.gif" width="500" height="300">
 
 TODO
 ====
